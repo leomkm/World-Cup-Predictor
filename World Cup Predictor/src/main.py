@@ -1,6 +1,5 @@
 from sklearn.model_selection import train_test_split
 import pandas as pd
-import json
 
 from load_data import load_matches
 from elo import add_elo_features, get_current_ratings
@@ -45,9 +44,10 @@ ratings = get_current_ratings(df)
 # TRAIN MODELS
 # ==========================
 
+# original feature creation
 X, y_home, y_away = create_features(df)
 
-
+# original splitting and model training
 X_train, X_test, y_home_train, y_home_test, y_away_train, y_away_test = train_test_split(
     X,
     y_home,
@@ -55,7 +55,6 @@ X_train, X_test, y_home_train, y_home_test, y_away_train, y_away_test = train_te
     test_size=0.2,
     random_state=42
 )
-
 
 home_model = train_model(
     X_train,
@@ -66,8 +65,6 @@ away_model = train_model(
     X_train,
     y_away_train
 )
-
-
 print("\nHome goals model:")
 evaluate(
     home_model,
@@ -92,15 +89,7 @@ profiles = build_team_profiles(
     df,
     ratings
 )
-for team in [
-    "Colombia",
-    "Brazil",
-    "Argentina",
-    "France",
-    "England"
-]:
-    print("\n", team)
-    print(profiles[team])
+
 
 # SAVE MODELS HERE
 import joblib
@@ -157,35 +146,7 @@ joblib.dump(
 
 
 print("Saved models successfully")
-from simulate import simulate_match
 
-for a,b in [
-    ("Argentina","Brazil"),
-    ("France","Brazil"),
-    ("Argentina","France")
-]:
-
-    wins = {
-        a:0,
-        b:0
-    }
-
-    for i in range(1000):
-
-        result = simulate_match(
-            a,
-            b,
-            ratings[a],
-            ratings[b],
-            home_model,
-            away_model,
-            profiles[a]["form"],
-            profiles[b]["form"]
-        )
-
-        wins[result["winner"]] += 1
-
-    print(a,b,wins)
 # ==========================
 # WORLD CUP TEAMS
 # ==========================
@@ -235,7 +196,7 @@ results = run_simulations(
     profiles,
     home_model,
     away_model,
-    simulations=1000
+    simulations=10000
 )
 
 
@@ -246,36 +207,38 @@ results = run_simulations(
 print("\nWorld Cup probabilities\n")
 
 
-dashboard_output = []
+from math import sqrt
 
-total_sims = sum(results.values()) if len(results) > 0 else 1
+def wilson_interval(k, n, z=1.96):
+    """Wilson score interval for k successes in n trials (returns lower, upper)."""
+    if n == 0:
+        return 0.0, 1.0
+    p = k / n
+    denom = 1 + z*z / n
+    center = p + z*z / (2*n)
+    half = z * sqrt(max(0.0, p*(1-p)/n + z*z/(4*n*n)))
+    lower = (center - half) / denom
+    upper = (center + half) / denom
+    return max(0.0, lower), min(1.0, upper)
 
-for team, wins in results.most_common():
+# Replace your original print loop with this
+alpha = 1.0  # Laplace smoothing strength (1.0 = add-one). Lower it if you have many sims.
+teams = list(results.keys())
+K = len(teams)
+total = sum(results.values())
 
-    probability = wins / total_sims
+print("\nWorld Cup probabilities\n")
+print(f"{'Rank':>4}  {'Team':<25} {'Prob':>8}  {'95% CI':<21}  {'Wins':>6}")
+print("-" * 70)
 
-    # print as percentage for the console
-    print(
-        f"{team}: {probability * 100:.1f}%"
-    )
-
-    # collect structured output for dashboard (both fraction and percentage)
-    dashboard_output.append({
-        "team": team,
-        "wins": int(wins),
-        "prob": probability,
-        "prob_percent": round(probability * 100, 2)
-    })
-
-# write dashboard JSON file
-DASHBOARD_PATH = os.path.join(BASE_DIR, "dashboard_results.json")
-try:
-    with open(DASHBOARD_PATH, "w", encoding="utf-8") as fh:
-        json.dump({"results": dashboard_output}, fh, indent=2)
-    print(f"Wrote dashboard results to {DASHBOARD_PATH}")
-except Exception as e:
-    print("Failed to write dashboard JSON:", e)
-
+sorted_teams = sorted(results.items(), key=lambda kv: kv[1], reverse=True)
+for rank, (team, wins) in enumerate(sorted_teams, start=1):
+    # Smoothed proportion
+    wins_s = wins + alpha
+    n_s = total + alpha * K
+    prob = wins_s / n_s
+    lower, upper = wilson_interval(wins_s, n_s)
+    print(f"{rank:>4}  {team:<25} {prob*100:7.2f}%  ({lower*100:6.2f}% - {upper*100:6.2f}%)  {wins:6d}")
 from expected_bracket import run_expected_bracket
 
 
