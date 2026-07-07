@@ -1,5 +1,6 @@
 from sklearn.model_selection import train_test_split
 import pandas as pd
+import json
 
 from load_data import load_matches
 from elo import add_elo_features, get_current_ratings
@@ -245,13 +246,36 @@ results = run_simulations(
 print("\nWorld Cup probabilities\n")
 
 
+dashboard_output = []
+
+total_sims = sum(results.values()) if len(results) > 0 else 1
+
 for team, wins in results.most_common():
 
-    probability = wins / sum(results.values()) * 100
+    probability = wins / total_sims
 
+    # print as percentage for the console
     print(
-        f"{team}: {probability:.1f}%"
+        f"{team}: {probability * 100:.1f}%"
     )
+
+    # collect structured output for dashboard (both fraction and percentage)
+    dashboard_output.append({
+        "team": team,
+        "wins": int(wins),
+        "prob": probability,
+        "prob_percent": round(probability * 100, 2)
+    })
+
+# write dashboard JSON file
+DASHBOARD_PATH = os.path.join(BASE_DIR, "dashboard_results.json")
+try:
+    with open(DASHBOARD_PATH, "w", encoding="utf-8") as fh:
+        json.dump({"results": dashboard_output}, fh, indent=2)
+    print(f"Wrote dashboard results to {DASHBOARD_PATH}")
+except Exception as e:
+    print("Failed to write dashboard JSON:", e)
+
 from expected_bracket import run_expected_bracket
 
 
