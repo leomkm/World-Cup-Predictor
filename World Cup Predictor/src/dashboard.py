@@ -1,8 +1,11 @@
 import os
 import streamlit as st
 import joblib
+import pandas as pd
 from collections import Counter
 from simulate import simulate_match
+from head_to_head import load_head_to_head_stats, calculate_h2h_summary, format_h2h_match_display
+from load_data import load_matches
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -16,6 +19,9 @@ home_model = joblib.load(os.path.join(MODEL_DIR, "home_model.pkl"))
 away_model = joblib.load(os.path.join(MODEL_DIR, "away_model.pkl"))
 ratings = joblib.load(os.path.join(MODEL_DIR, "ratings.pkl"))
 profiles = joblib.load(os.path.join(MODEL_DIR, "profiles.pkl"))
+
+# Load match data for head-to-head stats
+df = load_matches("../data/results.csv")
 
 st.title("⚽ World Cup Predictor")
 
@@ -42,6 +48,71 @@ if home_team != away_team:
         st.metric("Elo", round(away_profile["elo"]))
         st.metric("Attack", round(away_profile["form"]["attack"], 2))
         st.metric("Defense", round(away_profile["form"]["defense"], 2))
+
+    # Head-to-Head Stats Section
+    st.subheader("📊 Head-to-Head History")
+    
+    years_filter = st.slider("Years of history to show", min_value=1, max_value=20, value=5)
+    
+    h2h_matches = load_head_to_head_stats(df, home_team, away_team, years=years_filter)
+    h2h_summary = calculate_h2h_summary(h2h_matches, home_team, away_team)
+    
+    if h2h_summary["total_matches"] > 0:
+        # Display summary stats
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric(
+                f"{home_team} Wins",
+                h2h_summary["team1_wins"],
+                f"{h2h_summary['team1_win_pct']:.1f}%"
+            )
+        
+        with col2:
+            st.metric(
+                f"{away_team} Wins",
+                h2h_summary["team2_wins"],
+                f"{h2h_summary['team2_win_pct']:.1f}%"
+            )
+        
+        with col3:
+            st.metric(
+                "Draws",
+                h2h_summary["team1_draws"],
+                f"{h2h_summary['draw_pct']:.1f}%"
+            )
+        
+        with col4:
+            st.metric(
+                f"{home_team} GF/GA",
+                f"{h2h_summary['team1_goals_for']}/{h2h_summary['team1_goals_against']}"
+            )
+        
+        with col5:
+            st.metric(
+                f"{away_team} GF/GA",
+                f"{h2h_summary['team2_goals_for']}/{h2h_summary['team2_goals_against']}"
+            )
+        
+        # Display recent matches
+        st.write(f"#### Recent Matches ({len(h2h_matches)} total)")
+        
+        match_data = []
+        for _, match in h2h_matches.iterrows():
+            formatted = format_h2h_match_display(match, home_team)
+            match_data.append({
+                "Date": pd.to_datetime(formatted["date"]).strftime("%Y-%m-%d"),
+                "Home": formatted["home"],
+                "Away": formatted["away"],
+                "Score": formatted["score"],
+                "Result": formatted["result"]
+            })
+        
+        if match_data:
+            matches_df = pd.DataFrame(match_data)
+            st.dataframe(matches_df, use_container_width=True)
+    else:
+        st.info(f"No previous matches found between {home_team} and {away_team} in the past {years_filter} years.")
 
     st.subheader("Prediction")
 
