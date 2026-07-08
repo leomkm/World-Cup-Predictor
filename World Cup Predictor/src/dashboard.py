@@ -14,6 +14,7 @@ BASE_DIR = os.path.dirname(
 )
 
 MODEL_DIR = os.path.join(BASE_DIR, "models")
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
 home_model = joblib.load(os.path.join(MODEL_DIR, "home_model.pkl"))
 away_model = joblib.load(os.path.join(MODEL_DIR, "away_model.pkl"))
@@ -21,7 +22,7 @@ ratings = joblib.load(os.path.join(MODEL_DIR, "ratings.pkl"))
 profiles = joblib.load(os.path.join(MODEL_DIR, "profiles.pkl"))
 
 # Load match data for head-to-head stats
-df = load_matches("../data/results.csv")
+df = load_matches(os.path.join(DATA_DIR, "results.csv"))
 
 st.title("⚽ World Cup Predictor")
 
