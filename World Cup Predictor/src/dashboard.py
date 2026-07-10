@@ -186,7 +186,7 @@ elif page == "Tournament Simulator":
         
         with st.spinner("Simulating matches..."):
             champion, group_standings, knockout_results = simulate_world_cup(
-                ratings, home_model, away_model, profiles, verbose=False
+                ratings, home_model, away_model, profiles, num_match_sims=10, verbose=False
             )
         
         # Display Champion
@@ -195,9 +195,9 @@ elif page == "Tournament Simulator":
         # Group Stage Results
         st.subheader("📊 Group Stage Results")
         
-        tabs = st.tabs([f"Group {letter}" for letter in group_standings.keys()])
+        group_tabs = st.tabs([f"Group {letter}" for letter in group_standings.keys()])
         
-        for tab, (group_letter, group_data) in zip(tabs, group_standings.items()):
+        for tab, (group_letter, group_data) in zip(group_tabs, group_standings.items()):
             with tab:
                 st.write(f"#### Group {group_letter}")
                 
@@ -208,14 +208,14 @@ elif page == "Tournament Simulator":
                     standings_data.append({
                         "Position": len(standings_data) + 1,
                         "Team": team,
-                        "Played": stats["played"],
-                        "Wins": stats["wins"],
-                        "Draws": stats["draws"],
-                        "Losses": stats["losses"],
-                        "GF": stats["goals_for"],
-                        "GA": stats["goals_against"],
-                        "GD": gd,
-                        "Points": stats["points"]
+                        "Played": int(stats["played"]),
+                        "Wins": int(stats["wins"]),
+                        "Draws": int(stats["draws"]),
+                        "Losses": int(stats["losses"]),
+                        "GF": f"{stats['goals_for']:.1f}",
+                        "GA": f"{stats['goals_against']:.1f}",
+                        "GD": f"{gd:.1f}",
+                        "Points": int(stats["points"])
                     })
                 
                 standings_df = pd.DataFrame(standings_data)
@@ -231,7 +231,7 @@ elif page == "Tournament Simulator":
         # Knockout Stage Results
         st.subheader("🎯 Knockout Stage Results")
         
-        knockout_tabs = st.tabs(knockout_results.keys())
+        knockout_tabs = st.tabs(list(knockout_results.keys()))
         
         for tab, (round_name, round_results) in zip(knockout_tabs, knockout_results.items()):
             with tab:
