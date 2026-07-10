@@ -59,52 +59,52 @@ if page == "Match Predictor":
 
         # Head-to-Head Stats Section
         st.subheader("📊 Head-to-Head History")
-        
+
         years_filter = st.slider("Years of history to show", min_value=1, max_value=20, value=5)
-        
+
         h2h_matches = load_head_to_head_stats(df, home_team, away_team, years=years_filter)
         h2h_summary = calculate_h2h_summary(h2h_matches, home_team, away_team)
-        
+
         if h2h_summary["total_matches"] > 0:
             # Display summary stats
             col1, col2, col3, col4, col5 = st.columns(5)
-            
+
             with col1:
                 st.metric(
                     f"{home_team} Wins",
                     h2h_summary["team1_wins"],
                     f"{h2h_summary['team1_win_pct']:.1f}%"
                 )
-            
+
             with col2:
                 st.metric(
                     f"{away_team} Wins",
                     h2h_summary["team2_wins"],
                     f"{h2h_summary['team2_win_pct']:.1f}%"
                 )
-            
+
             with col3:
                 st.metric(
                     "Draws",
                     h2h_summary["team1_draws"],
                     f"{h2h_summary['draw_pct']:.1f}%"
                 )
-            
+
             with col4:
                 st.metric(
                     f"{home_team} GF/GA",
                     f"{h2h_summary['team1_goals_for']}/{h2h_summary['team1_goals_against']}"
                 )
-            
+
             with col5:
                 st.metric(
                     f"{away_team} GF/GA",
                     f"{h2h_summary['team2_goals_for']}/{h2h_summary['team2_goals_against']}"
                 )
-            
+
             # Display recent matches
             st.write(f"#### Recent Matches ({len(h2h_matches)} total)")
-            
+
             match_data = []
             for _, match in h2h_matches.iterrows():
                 formatted = format_h2h_match_display(match, home_team)
@@ -115,7 +115,7 @@ if page == "Match Predictor":
                     "Score": formatted["score"],
                     "Result": formatted["result"]
                 })
-            
+
             if match_data:
                 matches_df = pd.DataFrame(match_data)
                 st.dataframe(matches_df, use_container_width=True)
@@ -153,7 +153,7 @@ if page == "Match Predictor":
                 if (i + 1) % batch == 0 or i == simulations - 1:
                     progress = int((i + 1) / simulations * 100)
                     progress_bar.progress(min(progress, 100))
-                    status_text.text(f"Simulations: {i+1}/{simulations}")
+                    status_text.text(f"Simulations: {i + 1}/{simulations}")
 
             progress_bar.empty()
             status_text.empty()
@@ -178,29 +178,29 @@ if page == "Match Predictor":
 
 elif page == "Tournament Simulator":
     st.title("🏆 World Cup Tournament Simulator")
-    
+
     st.write("Simulate a full World Cup tournament from group stages through to the final!")
-    
+
     if st.button("🎲 Simulate World Cup", key="simulate_wc"):
         st.info("Simulating World Cup... This may take a minute.")
-        
+
         with st.spinner("Simulating matches..."):
-            champion, group_standings, knockout_results = simulate_world_cup(
+            champion, group_standings, knockout_results, best_8_third = simulate_world_cup(
                 ratings, home_model, away_model, profiles, num_match_sims=10, verbose=False
             )
-        
+
         # Display Champion
         st.success(f"🏆 **CHAMPION: {champion}**")
-        
+
         # Group Stage Results
         st.subheader("📊 Group Stage Results")
-        
+
         group_tabs = st.tabs([f"Group {letter}" for letter in group_standings.keys()])
-        
+
         for tab, (group_letter, group_data) in zip(group_tabs, group_standings.items()):
             with tab:
                 st.write(f"#### Group {group_letter}")
-                
+
                 # Create standings dataframe
                 standings_data = []
                 for team, stats in group_data["standings"]:
@@ -217,26 +217,29 @@ elif page == "Tournament Simulator":
                         "GD": f"{gd:.1f}",
                         "Points": int(stats["points"])
                     })
-                
+
                 standings_df = pd.DataFrame(standings_data)
                 st.dataframe(standings_df, use_container_width=True, hide_index=True)
-                
+
                 # Qualified teams
                 col1, col2 = st.columns(2)
+                col1, col2 = st.columns(2)
                 with col1:
-                    st.write(f"✅ **1st: {group_data['qualified'][0]}**")
+                    st.write(f"✅ **1st: {group_data['qualified_1st']}**")
                 with col2:
-                    st.write(f"✅ **2nd: {group_data['qualified'][1]}**")
-        
+                    st.write(f"✅ **2nd: {group_data['qualified_2nd']}**")
+                st.write(f"3rd: {group_data['third_place']}" + (
+                    " ✅ (qualified via best 3rd)" if group_data['third_place'] in best_8_third else ""))
+
         # Knockout Stage Results
         st.subheader("🎯 Knockout Stage Results")
-        
+
         knockout_tabs = st.tabs(list(knockout_results.keys()))
-        
+
         for tab, (round_name, round_results) in zip(knockout_tabs, knockout_results.items()):
             with tab:
                 st.write(f"#### {round_name}")
-                
+
                 knockout_data = []
                 for result in round_results:
                     knockout_data.append({
@@ -245,6 +248,6 @@ elif page == "Tournament Simulator":
                         "Away": result["away"],
                         "Winner": result["winner"]
                     })
-                
+
                 knockout_df = pd.DataFrame(knockout_data)
                 st.dataframe(knockout_df, use_container_width=True, hide_index=True)
