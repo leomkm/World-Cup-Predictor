@@ -78,11 +78,11 @@ def simulate_group_stage(ratings, home_model, away_model, profiles, num_match_si
     
     Returns:
         - group_standings: Dict with group results
-        - qualified_teams: List of 16 teams advancing to knockout stage
+        - qualified_teams: List of 32 teams advancing to Round of 32 (top 2 + best 8 3rd place)
     """
     
     group_standings = {}
-    qualified_teams = []
+    third_place_teams = []
     
     for group_name, teams in GROUPS.items():
         if verbose:
@@ -166,48 +166,82 @@ def simulate_group_stage(ratings, home_model, away_model, profiles, num_match_si
                     f"GD: {gd:+.1f}"
                 )
         
-        # Top 2 teams advance
-        qualified_teams.append(sorted_teams[0][0])
-        qualified_teams.append(sorted_teams[1][0])
-        
+        # Store group standings
         group_standings[group_name] = {
             "standings": sorted_teams,
-            "qualified": [sorted_teams[0][0], sorted_teams[1][0]]
+            "qualified_1st": sorted_teams[0][0],
+            "qualified_2nd": sorted_teams[1][0],
+            "third_place": sorted_teams[2][0],
+            "third_place_stats": sorted_teams[2][1]
         }
+        
+        # Track 3rd place teams for later selection
+        third_place_teams.append({
+            "team": sorted_teams[2][0],
+            "group": group_name,
+            "points": sorted_teams[2][1]["points"],
+            "goal_diff": sorted_teams[2][1]["goals_for"] - sorted_teams[2][1]["goals_against"],
+            "goals_for": sorted_teams[2][1]["goals_for"]
+        })
     
-    return group_standings, qualified_teams
+    # Select best 8 third-place teams
+    third_place_teams_sorted = sorted(
+        third_place_teams,
+        key=lambda x: (
+            -x["points"],
+            -x["goal_diff"],
+            -x["goals_for"]
+        )
+    )
+    
+    best_8_third = [team["team"] for team in third_place_teams_sorted[:8]]
+    
+    if verbose:
+        print(f"\n========== BEST 8 THIRD-PLACE TEAMS ==========")
+        for idx, team_info in enumerate(third_place_teams_sorted[:8], 1):
+            print(f"{idx}. {team_info['team']} (Group {team_info['group']})")
+    
+    return group_standings, best_8_third
 
 
-def create_knockout_bracket(qualified_teams, group_standings):
+def create_round_of_32_bracket(group_standings, best_8_third):
     """
-    Create Round of 16 bracket from qualified teams.
+    Create Round of 32 bracket from qualified teams.
     
-    Bracket structure (standard World Cup):
-    - Winner Group A vs Runner-up Group B
-    - Winner Group B vs Runner-up Group A
-    - Winner Group C vs Runner-up Group D
-    - Winner Group D vs Runner-up Group C
-    - etc.
+    Bracket structure:
+    - Winners and Runners-up from all groups
+    - Plus best 8 third-place teams
     """
     
     groups_order = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]
     
-    knockout_matches = []
+    round_32_matches = []
     
+    # Winners vs Runners-up + Best 3rd places
+    # A1 vs B2, B1 vs A2
+    # C1 vs D2, D1 vs C2
+    # etc.
     for i in range(0, len(groups_order), 2):
         group1 = groups_order[i]
         group2 = groups_order[i + 1]
         
-        winner1 = group_standings[group1]["qualified"][0]
-        runner2 = group_standings[group2]["qualified"][1]
+        winner1 = group_standings[group1]["qualified_1st"]
+        runner2 = group_standings[group2]["qualified_2nd"]
         
-        winner2 = group_standings[group2]["qualified"][0]
-        runner1 = group_standings[group1]["qualified"][1]
+        winner2 = group_standings[group2]["qualified_1st"]
+        runner1 = group_standings[group1]["qualified_2nd"]
         
-        knockout_matches.append((winner1, runner2))
-        knockout_matches.append((winner2, runner1))
+        round_32_matches.append((winner1, runner2))
+        round_32_matches.append((winner2, runner1))
     
-    return knockout_matches
+    # Add best 8 third-place teams (they get seeded into remaining 8 spots)
+    # This creates the final 16 Round of 32 matches
+    for i, third_team in enumerate(best_8_third):
+        # Pair up third place teams
+        if i % 2 == 0 and i + 1 < len(best_8_third):
+            round_32_matches.append((third_team, best_8_third[i + 1]))
+    
+    return round_32_matches
 
 
 def simulate_knockout_round(
@@ -262,14 +296,28 @@ def simulate_world_cup(ratings, home_model, away_model, profiles, num_match_sims
     """
     
     # Simulate group stage
-    group_standings, qualified_teams = simulate_group_stage(
+    group_standings, best_8_third = simulate_group_stage(
         ratings, home_model, away_model, profiles, num_match_sims=num_match_sims, verbose=verbose
     )
     
     knockout_results = {}
     
-    # Create Round of 16 bracket
-    round_16_matches = create_knockout_bracket(qualified_teams, group_standings)
+    # Create Round of 32 bracket
+    round_32_matches = create_round_of_32_bracket(group_standings, best_8_third)
+    winners_32, results_32 = simulate_knockout_round(
+        round_32_matches,
+        ratings,
+        home_model,
+        away_model,
+        profiles,
+        round_name="ROUND OF 32",
+        num_match_sims=num_match_sims,
+        verbose=verbose
+    )
+    knockout_results["Round of 32"] = results_32
+    
+    # Round of 16 (pair up winners)
+    round_16_matches = [(winners_32[i], winners_32[i + 1]) for i in range(0, len(winners_32), 2)]
     winners_16, results_16 = simulate_knockout_round(
         round_16_matches,
         ratings,
@@ -330,4 +378,4 @@ def simulate_world_cup(ratings, home_model, away_model, profiles, num_match_sims
         print(f"\n========== CHAMPION ==========")
         print(champion)
     
-    return champion, group_standings, knockout_results
+    return champion, group_standings, knockout_results, best_8_third
