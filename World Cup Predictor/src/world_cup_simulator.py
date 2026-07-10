@@ -1,6 +1,6 @@
 import pandas as pd
 from simulate import simulate_match
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 
 # World Cup Groups
@@ -20,24 +20,61 @@ GROUPS = {
 }
 
 
-def simulate_group_match(home, away, ratings, home_model, away_model, profiles):
-    """Simulate a single group stage match and return result."""
-    result = simulate_match(
-        home,
-        away,
-        ratings[home],
-        ratings[away],
-        home_model,
-        away_model,
-        profiles[home]["form"],
-        profiles[away]["form"]
-    )
-    return result
+def simulate_match_multiple(home, away, ratings, home_model, away_model, profiles, num_simulations=10):
+    """
+    Simulate a match multiple times and return the most likely winner and average score.
+    
+    Args:
+        num_simulations: Number of times to simulate the match (default 10)
+    
+    Returns:
+        Dict with winner (based on most wins) and average score
+    """
+    winners = Counter()
+    total_home_goals = 0
+    total_away_goals = 0
+    
+    for _ in range(num_simulations):
+        result = simulate_match(
+            home,
+            away,
+            ratings[home],
+            ratings[away],
+            home_model,
+            away_model,
+            profiles[home]["form"],
+            profiles[away]["form"]
+        )
+        
+        winners[result["winner"]] += 1
+        
+        # Parse score
+        score_parts = result["score"].split("-")
+        total_home_goals += int(score_parts[0])
+        total_away_goals += int(score_parts[1])
+    
+    # Get most likely winner
+    winner = winners.most_common(1)[0][0]
+    
+    # Calculate average score
+    avg_home_goals = total_home_goals / num_simulations
+    avg_away_goals = total_away_goals / num_simulations
+    avg_score = f"{avg_home_goals:.1f}-{avg_away_goals:.1f}"
+    
+    return {
+        "winner": winner,
+        "score": avg_score,
+        "home": home,
+        "away": away
+    }
 
 
-def simulate_group_stage(ratings, home_model, away_model, profiles, verbose=True):
+def simulate_group_stage(ratings, home_model, away_model, profiles, num_match_sims=10, verbose=True):
     """
     Simulate all group stage matches and return qualified teams.
+    
+    Args:
+        num_match_sims: Number of times to simulate each match (default 10)
     
     Returns:
         - group_standings: Dict with group results
@@ -68,12 +105,18 @@ def simulate_group_stage(ratings, home_model, away_model, profiles, verbose=True
         # Simulate round-robin (each team plays each other once)
         for i, home in enumerate(teams):
             for away in teams[i + 1:]:
-                result = simulate_group_match(home, away, ratings, home_model, away_model, profiles)
+                result = simulate_match_multiple(
+                    home, away, ratings, home_model, away_model, profiles, 
+                    num_simulations=num_match_sims
+                )
                 
-                home_score = result["score"].split("-")[0]
-                away_score = result["score"].split("-")[1]
-                home_score = int(home_score)
-                away_score = int(away_score)
+                score_parts = result["score"].split("-")
+                home_score = float(score_parts[0])
+                away_score = float(score_parts[1])
+                
+                # Round to nearest integer for point calculation
+                home_score_int = round(home_score)
+                away_score_int = round(away_score)
                 
                 # Update home team stats
                 standings[home]["played"] += 1
@@ -85,12 +128,12 @@ def simulate_group_stage(ratings, home_model, away_model, profiles, verbose=True
                 standings[away]["goals_for"] += away_score
                 standings[away]["goals_against"] += home_score
                 
-                # Determine points
-                if home_score > away_score:
+                # Determine points based on rounded scores
+                if home_score_int > away_score_int:
                     standings[home]["wins"] += 1
                     standings[home]["points"] += 3
                     standings[away]["losses"] += 1
-                elif home_score < away_score:
+                elif home_score_int < away_score_int:
                     standings[away]["wins"] += 1
                     standings[away]["points"] += 3
                     standings[home]["losses"] += 1
@@ -101,7 +144,7 @@ def simulate_group_stage(ratings, home_model, away_model, profiles, verbose=True
                     standings[away]["points"] += 1
                 
                 if verbose:
-                    print(f"{home} {home_score}-{away_score} {away}")
+                    print(f"{home} {result['score']} {away}")
         
         # Sort teams by points, then goal differential
         sorted_teams = sorted(
@@ -118,9 +161,9 @@ def simulate_group_stage(ratings, home_model, away_model, profiles, verbose=True
             for idx, (team, stats) in enumerate(sorted_teams, 1):
                 gd = stats["goals_for"] - stats["goals_against"]
                 print(
-                    f"{idx}. {team}: {stats['points']}pts "
+                    f"{idx}. {team}: {stats['points']:.0f}pts "
                     f"({stats['wins']}W-{stats['draws']}D-{stats['losses']}L) "
-                    f"GD: {gd:+d}"
+                    f"GD: {gd:+.1f}"
                 )
         
         # Top 2 teams advance
@@ -174,6 +217,7 @@ def simulate_knockout_round(
     away_model,
     profiles,
     round_name="",
+    num_match_sims=10,
     verbose=True
 ):
     """Simulate knockout round matches (determine winners)."""
@@ -185,7 +229,10 @@ def simulate_knockout_round(
     round_results = []
     
     for home, away in matches:
-        result = simulate_group_match(home, away, ratings, home_model, away_model, profiles)
+        result = simulate_match_multiple(
+            home, away, ratings, home_model, away_model, profiles,
+            num_simulations=num_match_sims
+        )
         
         if verbose:
             print(f"{result['home']} {result['score']} {result['away']} → {result['winner']}")
@@ -201,9 +248,12 @@ def simulate_knockout_round(
     return winners, round_results
 
 
-def simulate_world_cup(ratings, home_model, away_model, profiles, verbose=True):
+def simulate_world_cup(ratings, home_model, away_model, profiles, num_match_sims=10, verbose=True):
     """
     Simulate entire World Cup from group stage to final.
+    
+    Args:
+        num_match_sims: Number of times to simulate each match (default 10)
     
     Returns:
         - champion: Winning team
@@ -213,7 +263,7 @@ def simulate_world_cup(ratings, home_model, away_model, profiles, verbose=True):
     
     # Simulate group stage
     group_standings, qualified_teams = simulate_group_stage(
-        ratings, home_model, away_model, profiles, verbose=verbose
+        ratings, home_model, away_model, profiles, num_match_sims=num_match_sims, verbose=verbose
     )
     
     knockout_results = {}
@@ -227,6 +277,7 @@ def simulate_world_cup(ratings, home_model, away_model, profiles, verbose=True):
         away_model,
         profiles,
         round_name="ROUND OF 16",
+        num_match_sims=num_match_sims,
         verbose=verbose
     )
     knockout_results["Round of 16"] = results_16
@@ -240,6 +291,7 @@ def simulate_world_cup(ratings, home_model, away_model, profiles, verbose=True):
         away_model,
         profiles,
         round_name="QUARTER FINALS",
+        num_match_sims=num_match_sims,
         verbose=verbose
     )
     knockout_results["Quarter Finals"] = results_qf
@@ -253,6 +305,7 @@ def simulate_world_cup(ratings, home_model, away_model, profiles, verbose=True):
         away_model,
         profiles,
         round_name="SEMI FINALS",
+        num_match_sims=num_match_sims,
         verbose=verbose
     )
     knockout_results["Semi Finals"] = results_sf
@@ -266,6 +319,7 @@ def simulate_world_cup(ratings, home_model, away_model, profiles, verbose=True):
         away_model,
         profiles,
         round_name="FINAL",
+        num_match_sims=num_match_sims,
         verbose=verbose
     )
     knockout_results["Final"] = results_final
